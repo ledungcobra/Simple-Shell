@@ -19,7 +19,7 @@ string NewString(string src)
 string *stringTokenizer(string src)
 {
     string *result = NULL;
-    result = (string *)malloc(sizeof(char) * MAX_LENGTH);
+    result = (string *)malloc(sizeof(string) * MAX_LENGTH);
 
     memset(result,NULL,MAX_LENGTH);
 
@@ -43,18 +43,130 @@ int countString(string *listStrings)
     int i = 0;
     for (i = 0; listStrings[i] && i < MAX_LENGTH; i++)
     {
+        //DO Nothing
     }
     return i;
 }
 
-int checkHasAmpersandCharacter(string * args){
+int checkForAmpersandCharacter(string * args){
     
     int count = countString(args);
     return !strcmp(args[count-1],"&");
 
 }
 
+int findPosForExistingCharacter(string *args,string character){
+    int count = countString(args);
+    int result = -1;
+    
+    for(int i=0;i<count;i++){
+        if(strcmp(args[i],character) == 0){
+            result = i;
+            break;
+        }
+    }
 
+    return result;
+
+}
+
+int findPosRedirectChar(string *args,string character){
+
+    int result = -1;
+    int count = countString(args);
+    for(int i = 0;i<count;i++){
+        if(strcmp(args[i],character) == 0){
+            result = i;
+            break;
+        }
+    }
+
+    return result;
+
+}
+
+void deleteFileNameAndRedirectCheck(string** args,int redirectPos){
+    
+    int count = countString(*args);
+
+    free(*args[count-1]);
+    free(*args[count-2]);
+
+    *args[count-2] = NULL;
+
+}
+// string* append(string* args,string value){
+
+// }
+//1 3
+int seperateArgs(string *src,int posPipeChar,string** args1,string** args2){
+    
+    int count = countString(src);
+
+    *args1 = (string*) malloc(sizeof(string)*(posPipeChar+1));
+    memset(*args1,NULL,posPipeChar+1);
+
+    int x = count-posPipeChar-1;    
+
+
+    *args2 = (string*) malloc(sizeof(string)*(x+1));
+    memset(*args2,0,x+1);
+
+
+    for(int i=0;i<posPipeChar;i++){
+        (*args1)[i] = src[i];
+
+    }  
+    int j = 0;
+
+    for(int i=posPipeChar+1;i<=count-1;i++){
+        (*args2)[j++] = src[i];
+    }
+
+
+}
+
+
+int executeChild(string ** args){
+    //In child process
+    int posRedirectWrite = findPosRedirectChar(*args,">");
+    int posRedirectRead = findPosRedirectChar(*args,"<");
+   
+
+
+    if(posRedirectWrite!=-1){
+        string filename = NewString(*args[posRedirectWrite+1]);
+        int fd = open(filename,O_WRONLY);
+        dup2(fd,STDOUT_FILENO);
+        deleteFileNameAndRedirectCheck(args,posRedirectWrite);
+    }
+
+    if(posRedirectRead!=-1){
+
+        string filename = NewString(*args[posRedirectRead+1]);
+
+        int fd = open(filename,O_RDONLY);
+        dup2(fd,STDIN_FILENO);
+        deleteFileNameAndRedirectCheck(args,posRedirectRead);
+    }
+
+    
+    execvp(*args[0],*args);
+}
+
+
+//DEBUGING
+void printListString(string* src){
+    fflush(stdin);
+
+    for(int i = 0;i<countString(src);i++){
+        printf("%s\n",src[i]);
+    }
+}
+
+void createPipe(string * args1,string* arg2){
+
+}
 
 int main()
 {
@@ -64,7 +176,9 @@ int main()
     string command = (string)malloc(sizeof(char) * MAX_LENGTH + 1);
     string history = NULL;
     
-  
+    
+
+
     int hasAmpersandChar = 0;
 
     while (should_run)
@@ -85,20 +199,36 @@ int main()
             {
                 strcpy(command, history);
                 printf("%s\n", history);
+                
             }
         }
         
         args = stringTokenizer(command);
         
-        hasAmpersandChar = checkHasAmpersandCharacter(args);
+        hasAmpersandChar = checkForAmpersandCharacter(args);
         // int argsCount = countString(args);
 
         pid_t pid = fork();
 
         if (pid == 0)
         {
-            //In child process
-            execvp(args[0],args);
+            //Args include 
+            int posPipeChar = findPosForExistingCharacter(args,"|");
+            
+            if(posPipeChar != -1){
+                        
+                string* args1 = NULL;  
+                string* args2 = NULL;
+
+                seperateArgs(args,posPipeChar,&args1,&args2);
+
+                createPipe(args1,args2);
+                               
+
+            }else{
+                executeChild(args);
+            }
+
         }
         else if (pid > 0)
         {
@@ -118,27 +248,7 @@ int main()
         history = NewString(command);
     }
 
-    // while (should_run)
-    // {
 
-    //     printf("ssh>");
-    //     fflush(stdout);
-
-    //     pid_t pid = fork();
-
-    //     if (pid == 0)
-    //     {
-    //         printf("Run in child process");
-    //         execvp("echo", argv);
-    //     }
-    //     else
-    //     {
-    //         printf("Run in parent process");
-    //         wait(NULL);
-    //     }
-
-    //     gets(command);
-    // }
 
     return 0;
 }
