@@ -51,7 +51,15 @@ int countString(string *listStrings)
 int checkForAmpersandCharacter(string * args){
     
     int count = countString(args);
-    return !strcmp(args[count-1],"&");
+    int result;
+    if(strcmp(args[count-1],"&")==0){
+        result = 1;
+    }else{
+        result = 0;
+    }
+
+
+    return result;
 
 }
 
@@ -150,8 +158,8 @@ int executeChild(string ** args){
         deleteFileNameAndRedirectCheck(args,posRedirectRead);
     }
 
-    
-    execvp(*args[0],*args);
+
+    execvp((*args)[0],*args);
 }
 
 
@@ -165,6 +173,44 @@ void printListString(string* src){
 }
 
 void createPipe(string * args1,string* arg2){
+    int fileDescriptors[2];
+    pipe(fileDescriptors);
+
+    pid_t pid1 = fork();
+
+    if( pid1 == 0){
+        
+        printf("Tien trinh mot running: \n");
+        printListString(args1);
+
+        //Chuyen write output sang fileDesciptors[1]
+        dup2(fileDescriptors[1], STDOUT_FILENO);
+        close(fileDescriptors[1]);
+        executeChild(args1);
+
+    }else if(pid1>0){
+        //Parent
+        int pid2 = fork();
+
+        if(pid2 == 0){
+            
+            printf("Tien trinh 2 running");    
+            
+            dup2(fileDescriptors[0],STDIN_FILENO);
+            close(fileDescriptors[1]);
+
+        }else{
+            
+            close(fileDescriptors[1]);
+            wait(NULL);
+
+        }
+
+
+    }else{
+        //ERROR
+
+    }
 
 }
 
@@ -190,7 +236,7 @@ int main()
 
         if (strcmp(command, "exit") == 0)
         {
-            break;
+            should_run = 0;
         }
 
         if (strcmp(command, "!!") == 0)
@@ -204,14 +250,15 @@ int main()
         }
         
         args = stringTokenizer(command);
-        
+       
+
         hasAmpersandChar = checkForAmpersandCharacter(args);
         // int argsCount = countString(args);
 
-        pid_t pid = fork();
-
-        if (pid == 0)
-        {
+        
+        if (fork() == 0)
+        {  
+            printf("run child");
             //Args include 
             int posPipeChar = findPosForExistingCharacter(args,"|");
             
@@ -221,16 +268,17 @@ int main()
                 string* args2 = NULL;
 
                 seperateArgs(args,posPipeChar,&args1,&args2);
-
                 createPipe(args1,args2);
                                
 
             }else{
+               
                 executeChild(args);
+
             }
 
         }
-        else if (pid > 0)
+        else 
         {
             //From parent Process
             if(!hasAmpersandChar){
@@ -238,12 +286,7 @@ int main()
             }
 
         }
-        else
-        {
-            //Error
-            perror("Error when fork");
-        }
-
+        
         free(history);
         history = NewString(command);
     }
