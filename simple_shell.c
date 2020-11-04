@@ -14,7 +14,7 @@ string NewString(string src)
     strcpy(temp, src);
     return temp;
 }
-
+//Phan tach chuoi bang cach dung khoang trang de phan tach
 string *stringTokenizer(string src)
 {
     string *result = NULL;
@@ -36,7 +36,7 @@ string *stringTokenizer(string src)
     }
     return result;
 }
-
+//Dem so luong ki chuoi co trong mang listStings
 int countString(string *listStrings)
 {
     int i = 0;
@@ -46,7 +46,9 @@ int countString(string *listStrings)
     }
     return i;
 }
-
+//Kiem tra su xuat hien cua ki tu & trong tham so truyen vao
+//Neu ki tu & nam o cuoi cung thi tra ve 1
+//Nguoc lai tra ve 0
 int checkForAmpersandCharacter(string *args)
 {
 
@@ -63,7 +65,7 @@ int checkForAmpersandCharacter(string *args)
 
     return result;
 }
-
+//Tim vi tri xuat hien cua mot ki tu trong mang co trong mang
 int findPosForExistingCharacter(string *args, string character)
 {
     int count = countString(args);
@@ -80,7 +82,7 @@ int findPosForExistingCharacter(string *args, string character)
 
     return result;
 }
-
+//Tim vi tri xuat hien cua > hoac < co trong danh sach cac tham so
 int findPosRedirectChar(string *args, string character)
 {
 
@@ -97,7 +99,7 @@ int findPosRedirectChar(string *args, string character)
 
     return result;
 }
-
+//Xoa ten file la ki hieu redirect trong tham so dong lenh
 void deleteFileNameAndRedirectCheck(string **args, int redirectPos)
 {
 
@@ -108,10 +110,7 @@ void deleteFileNameAndRedirectCheck(string **args, int redirectPos)
 
     (*args)[count - 2] = NULL;
 }
-// string* append(string* args,string value){
-
-// }
-//1 3
+//Phan tach args khi co ki tu pipe trong command
 int seperateArgs(string *src, int posPipeChar, string **args1, string **args2)
 {
 
@@ -136,84 +135,98 @@ int seperateArgs(string *src, int posPipeChar, string **args1, string **args2)
         (*args2)[j++] = src[i];
     }
 }
-
+//Thuc hien khoi chay tien trinh con
 int executeChild(string **args)
 {
-  
+
     //In child process
     int posRedirectWrite = findPosRedirectChar(*args, ">");
     int posRedirectRead = findPosRedirectChar(*args, "<");
     int fd = -1;
 
-    
-
+    //Kiem tra neu ton tai ki hieu > trong args
     if (posRedirectWrite != -1)
     {
 
         string filename = NewString((*args)[posRedirectWrite + 1]);
-        fd = open(filename, O_CREAT|O_WRONLY|O_APPEND,0666);
+        fd = open(filename, O_CREAT | O_WRONLY, 0666);
         dup2(fd, STDOUT_FILENO);
         deleteFileNameAndRedirectCheck(args, posRedirectWrite);
-
     }
-
+    //Kiem tra neu ton tai ki hieu < trong args
     if (posRedirectRead != -1)
     {
-        string filename = NewString((*args)[posRedirectRead + 1]);        
+        string filename = NewString((*args)[posRedirectRead + 1]);
         fd = open(filename, O_RDONLY);
         dup2(fd, STDIN_FILENO);
         deleteFileNameAndRedirectCheck(args, posRedirectRead);
-
     }
-
-
-     execvp((*args)[0], *args);
-    // printf("%s", buffer);
+    // Tien hanh chay tien trinh con: 
+    //@Tham so dau la ten file,
+    //@Tham so thu hai la danh sach tham so
+    execvp((*args)[0], *args);
 }
 
-//DEBUGING
-void printListString(string *src)
-{
-    fflush(stdin);
+// //DEBUGING
+// void printListString(string *src)
+// {
+//     fflush(stdin);
 
-    for (int i = 0; i < countString(src); i++)
-    {
-        printf("%s\n", src[i]);
-    }
-}
+//     for (int i = 0; i < countString(src); i++)
+//     {
+//         printf("%s\n", src[i]);
+//     }
+// }
 
+
+//Tao duong ong 
+//@param args1: tham so cua tien trinh 1 
+//@param args2: tham so cua tien trinh 2
 void createPipe(string *args1, string *args2)
 {
-    int fileDescriptors[2];
-    pipe(fileDescriptors);
-
+    //Tao kenh giao tiep giua tien trinh con va tien trinh cha
+    int fileDescs[2];
+    pipe(fileDescs);
+    
+    //Tien hanh clone tien trinh hien tai
     pid_t pid1 = fork();
 
+    //Neu clone tien trinh thanh cong
     if (pid1 == 0)
     {
-
-        //Chuyen write output sang fileDesciptors[1]
-        dup2(fileDescriptors[1], STDOUT_FILENO);
-        // close(fileDescriptors[0]);
+        // Ket qua tu STDOUT_FILENO chuyen sang fileDescs[1] (Write-Only-File)
+        dup2(fileDescs[1], STDOUT_FILENO);
+        //Dong file  dung de doc do khong dung
+        close(fileDescs[0]);
         executeChild(&args1);
     }
-    else if (pid1 > 0)
+    else if (pid1 > 0) // Neu day la tien trinh cha
     {
-        //Parent
-        pid_t pid2 = fork();
 
+        //Clone lai tien trinh cha hien tai
+        pid_t pid2 = fork();
+        //Neu day la tien trinh con
         if (pid2 == 0)
         {
-
-            dup2(fileDescriptors[0], STDIN_FILENO);
-            // close(fileDescriptors[1]);
+            //Child
+            //Chuyen doi kenh truyen tu lieu nhap vao la file trung gian duoc tao 
+            //tu qua trinh pipe
+            dup2(fileDescs[0], STDIN_FILENO);
+            //Dong file ghi do khong dung
+            close(fileDescs[1]);
             executeChild(&args2);
+
+        }
+        else if (pid2 > 0)   //Neu day la tien trinh cha 
+        {
+            close(fileDescs[0]);
+            close(fileDescs[1]);
+            wait(NULL);
+
         }
         else
         {
-
-            // close(fileDescriptors[1]);
-            wait(NULL);
+            printf("Error forking");
         }
     }
     else
@@ -247,12 +260,20 @@ int main()
 
         if (strcmp(command, "!!") == 0)
         {
-            if (history != NULL)
+            if (history)
             {
                 strcpy(command, history);
                 printf("%s\n", history);
             }
+            else
+            {
+                printf("No commands in history.");
+            }
         }
+
+        free(history);
+        history = NULL;
+        history = NewString(command);
 
         args = stringTokenizer(command);
 
@@ -263,6 +284,7 @@ int main()
 
         if (pid == 0)
         {
+            //Khi la children
 
             int posPipeChar = findPosForExistingCharacter(args, "|");
 
@@ -291,11 +313,11 @@ int main()
         }
         else
         {
+            printf("Fork Error");
         }
-
-        free(history);
-        history = NewString(command);
     }
+
+    free(command);
 
     return 0;
 }
