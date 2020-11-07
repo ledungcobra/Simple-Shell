@@ -7,41 +7,162 @@
 #include <fcntl.h>
 #define MAX_LENGTH 80
 
-int executeChild(string **args)
+typedef char *string; //=> string[]
+int checkPipeCommand(char **args);
+char *NewString(char *src);
+int executeChild(char *args[],char *filename);
+int argsCount(char **args);
+int checkRedirectCommand(char **args);
+void redirectIO(char **args, char *filename);
+int checkPipeCommand(char **args);
+void createPipe(char **args, int pos);
+void splitPipeCommand(char **args1, char **args2, char **args, int pos);
+int checkForAmpersandCharacter(char **args);
+
+int main()
 {
+    char *args[MAX_LENGTH]; /* command line arguments */
+    char *filename=NULL;
 
-    //In child process
-    int posRedirectWrite = findPosRedirectChar(*args, ">");
-    int posRedirectRead = findPosRedirectChar(*args, "<");
-    int fd = -1;
+    int should_run = 1; /* flag to determine when to exit program */
+    char *command = (char*)malloc(sizeof(char) * MAX_LENGTH + 1);
+    char *history = NULL; /*Chuoi luu lai gia tri cua lenh command truoc*/
 
-    //Kiem tra neu ton tai ki hieu > trong args
-    if (posRedirectWrite != -1)
+    int hasAmpersandChar = 0;/*Bien co xac dinh co kys hieu & trong command hay khong*/
+
+    while (should_run)
     {
 
-        string filename = NewString((*args)[posRedirectWrite + 1]);
-        fd = open(filename, O_CREAT | O_WRONLY, 0666);
-        dup2(fd, STDOUT_FILENO);
-        deleteFileNameAndRedirectCheck(args, posRedirectWrite);
+        printf("osh>");
+        fflush(stdin);
+        fgets(command,MAX_LENGTH, stdin);
+
+        //Khi nhap exit -> thoat truong trinh
+        if (strcmp(command, "exit\n") == 0)
+        {
+            should_run = 0;
+            continue;
+        }
+
+        //History
+        if (strcmp(command, "!!\n") == 0)
+        {
+            if (history)
+            {
+                strcpy(command, history);
+                printf("%s", history);
+            }
+            else
+            {
+                printf("No commands in history.\n");
+                continue;
+            }
+        }
+        //giai phong history
+        free(history);
+        //Gan lai gia tri cho history bang lenh command moi vua nhap
+        history = NULL;
+        history = NewString(command);
+
+        //Tach command thanh cac token, moi token se la 1 tham so trong cac ham tiep theo
+        
+	char *token;
+	int i=0;
+
+	//tach chuoi thanh tung token
+	token = strtok(command, " \n");
+	while (token!= NULL)
+	{
+		
+	    args[i] = token;
+	    i++;
+	    token = strtok(NULL, " \n");
+	}
+	//gan args = NULL
+	args[i] = token;
+	
+        hasAmpersandChar = checkForAmpersandCharacter(args);//Kiem tra co ton tai ky tu & trong command hay khong
+        
+        if(hasAmpersandChar){
+        	args[i-1] = NULL;
+        }
+
+
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            //Khi la children
+
+            int flagPipeCommand = checkPipeCommand(args);
+
+            if (flagPipeCommand!=0)
+            {
+
+                createPipe(args,flagPipeCommand);
+            }
+            else
+            {
+
+                executeChild(args,filename);
+            }
+        }
+        else if (pid > 0)
+        {
+            //From parent Process
+            if (!hasAmpersandChar)
+            {
+                wait(NULL);
+            }
+        }
+        else
+        {
+            printf("Fork Error");
+        }
     }
-    //Kiem tra neu ton tai ki hieu < trong args
-    if (posRedirectRead != -1)
-    {
-        string filename = NewString((*args)[posRedirectRead + 1]);
-        fd = open(filename, O_RDONLY);
-        dup2(fd, STDIN_FILENO);
-        deleteFileNameAndRedirectCheck(args, posRedirectRead);
-    }
-    // Tien hanh chay tien trinh con: 
-    //@Tham so dau la ten file,
-    //@Tham so thu hai la danh sach tham so
-    execvp((*args)[0], *args);
+
+    free(command);
+
+    return 0;
+}
+//Dung de sao chep mot chuoi dang char *
+char *NewString(char *src)
+{
+    char *temp = (char*)malloc(sizeof(char) * (strlen(src) + 1));
+    strcpy(temp, src);
+    return temp;
 }
 
-int checkForAmpersandCharacter(string *args)
+int executeChild(char *args[],char *filename)
 {
 
-    int count = countString(args);
+    if (checkRedirectCommand(args))
+    {
+        redirectIO(args, filename);
+    }
+    else
+    {
+        // Tien hanh chay tien trinh con: 
+        //@Tham so dau la ten file,
+        //@Tham so thu hai la danh sach tham so
+        
+        if (execvp(args[0],args)==-1)
+        {
+            printf("excute fail!!\n");
+            exit(1);
+        }
+        
+    }
+    return 1;
+    
+
+}
+
+//Kiem tra ky tu &
+int checkForAmpersandCharacter(char **args)
+{
+
+    int count = argsCount(args);
     int result;
     if (strcmp(args[count - 1], "&") == 0)
     {
@@ -55,16 +176,18 @@ int checkForAmpersandCharacter(string *args)
     return result;
 }
 
+//Dem so tham so trong command
 int argsCount(char **args)
 {
     int i;
-    for (i = 0; args[i] != NULL; i++)
-        ;
+    for (i = 0; args[i] != NULL; i++);
     return i;
 }
 
+//Kiem tra trong command co ky ty redirect("<", ">") hay khong
 int checkRedirectCommand(char **args)
 {
+    char *redirect[] = {">","<"};
     int n = argsCount(args);
     for (int i = 0; i < 2; i++)//vi chi co "<" và ">" nen chi co 2 vong lap
     {
@@ -77,11 +200,13 @@ int checkRedirectCommand(char **args)
 }
 
 //redirect input output
+//Tham so args: command nguoi dung nhap
+//filename: file dc ghi, xuat
 void redirectIO(char **args, char *filename)
 {
     int file;
     int n = argsCount(args);
-    filename = (char *)malloc(LSH_TOK_BUFSIZE * sizeof(char));
+    filename = (char *)malloc(MAX_LENGTH * sizeof(char));
     if (filename)
         strcpy(filename, args[n - 1]);
     if (strcmp(args[n - 2], ">") == 0)
@@ -127,6 +252,7 @@ void redirectIO(char **args, char *filename)
     close(file);
 }
 
+//Kiem tra xem co phai lenh pipe hay ko. 
 int checkPipeCommand(char **args)
 {
     int n = argsCount(args);
@@ -244,91 +370,4 @@ void createPipe(char **args, int pos)
     }
 
     exit(EXIT_SUCCESS);
-}
-
-int main()
-{
-    string *args; /* command line arguments */
-
-    int should_run = 1; /* flag to determine when to exit program */
-    string command = (string)malloc(sizeof(char) * MAX_LENGTH + 1);
-    string history = NULL;
-
-    int hasAmpersandChar = 0;
-
-    while (should_run)
-    {
-
-        printf("osh>");
-        fflush(stdin);
-        gets(command);
-
-        if (strcmp(command, "exit") == 0)
-        {
-            break;
-        }
-
-        //History
-        if (strcmp(command, "!!") == 0)
-        {
-            if (history)
-            {
-                strcpy(command, history);
-                printf("%s\n", history);
-            }
-            else
-            {
-                printf("No commands in history.");
-            }
-        }
-
-        free(history);
-        history = NULL;
-        history = NewString(command);
-
-        args = stringTokenizer(command);
-
-        hasAmpersandChar = checkForAmpersandCharacter(args);
-        // int argsCount = countString(args);
-
-        pid_t pid = fork();
-
-        if (pid == 0)
-        {
-            //Khi la children
-
-            int posPipeChar = findPosForExistingCharacter(args, "|");
-
-            if (posPipeChar != -1)
-            {
-
-                string *args1 = NULL;
-                string *args2 = NULL;
-
-                seperateArgs(args, posPipeChar, &args1, &args2);
-                createPipe(args1, args2);
-            }
-            else
-            {
-
-                executeChild(&args);
-            }
-        }
-        else if (pid > 0)
-        {
-            //From parent Process
-            if (!hasAmpersandChar)
-            {
-                wait(NULL);
-            }
-        }
-        else
-        {
-            printf("Fork Error");
-        }
-    }
-
-    free(command);
-
-    return 0;
 }
